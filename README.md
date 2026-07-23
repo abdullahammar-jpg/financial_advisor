@@ -215,3 +215,4 @@ Strategi *Glide Path* didasarkan pada prinsip mitigasi risiko penarikan beruruta
 ### ⚠️ Disclaimer Perencanaan Keuangan
 * Proyeksi dana pensiun ini adalah estimasi matematis probabilistik berbasis model simulasi. Hasil masa lalu (data historis BPS & IHSG) tidak memberikan jaminan kepastian atas kinerja return di masa depan.
 * Angka peluang kebangkrutan (*ruin probability*) ditujukan sebagai alat bantu peninjau tingkat toleransi risiko portofolio tabungan, bukan sebuah kepastian mutlak kebangkrutan keuangan. Pengguna disarankan tetap berkonsultasi dengan penasihat keuangan profesional tersertifikasi (e.g., CFP) untuk keputusan finansial penting.
+* Projek ini adalah kolaborasi dengan **Muhammad Alfian Wewijanardi**
