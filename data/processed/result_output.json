@@ -12,46 +12,46 @@
     "custom_deposit_rate": 8.0
   },
   "actuarial_summary": {
-    "source": "TMPI 2023 (BPJS/PAI/ITB): mortality_clean.csv",
+    "source": "TMPI 2023 (BPJS/PAI/ITB): mortality_clean.csv + A/E adjustment (ae_ratio_clean.csv 2018-2022)",
     "current_age": 25,
     "gender": "male",
-    "expected_death_age": 75.6,
-    "p50_survival_age": 78,
-    "p75_survival_age": 89,
-    "p90_survival_age": 96,
-    "planning_age_recommended": 96,
+    "expected_death_age": 76.8,
+    "p50_survival_age": 77,
+    "p75_survival_age": 90,
+    "p90_survival_age": 106,
+    "planning_age_recommended": 106,
     "years_to_retirement": 30,
-    "planning_horizon_post_retirement": 41,
-    "survival_prob_at_retirement": 0.896,
+    "planning_horizon_post_retirement": 51,
+    "survival_prob_at_retirement": 0.8864,
     "longevity_risk_flag": false,
     "warning": null
   },
   "projection": {
     "pessimistic_p10": {
       "percentile": "P10 — Pesimistis",
-      "fund_at_retirement": 2549368051.0,
-      "real_fund_at_retirement": 893712836.0,
-      "annual_withdrawal_capacity": 89227882.0,
-      "ruin_probability": 1.0,
-      "fund_depleted_age": 61,
+      "fund_at_retirement": 1907635696.0,
+      "real_fund_at_retirement": 800236374.0,
+      "annual_withdrawal_capacity": 66767249.0,
+      "ruin_probability": 0.306,
+      "fund_depleted_age": 98,
       "note": "Nilai dana dalam IDR nominal saat pensiun usia 55"
     },
     "median_p50": {
       "percentile": "P50 — Median",
-      "fund_at_retirement": 2959688719.0,
-      "real_fund_at_retirement": 1037555875.0,
-      "annual_withdrawal_capacity": 103589105.0,
-      "ruin_probability": 1.0,
-      "fund_depleted_age": 62,
+      "fund_at_retirement": 2314006659.0,
+      "real_fund_at_retirement": 970705415.0,
+      "annual_withdrawal_capacity": 80990233.0,
+      "ruin_probability": 0.007,
+      "fund_depleted_age": 100,
       "note": "Nilai dana dalam IDR nominal saat pensiun usia 55"
     },
     "optimistic_p90": {
       "percentile": "P90 — Optimistis",
-      "fund_at_retirement": 3442601750.0,
-      "real_fund_at_retirement": 1206847074.0,
-      "annual_withdrawal_capacity": 120491061.0,
-      "ruin_probability": 1.0,
-      "fund_depleted_age": 63,
+      "fund_at_retirement": 2813174917.0,
+      "real_fund_at_retirement": 1180102103.0,
+      "annual_withdrawal_capacity": 98461122.0,
+      "ruin_probability": 0.0,
+      "fund_depleted_age": null,
       "note": "Nilai dana dalam IDR nominal saat pensiun usia 55"
     }
   },
@@ -67,12 +67,12 @@
       "rd_campuran": 0.25,
       "rd_saham_idx": 0.15
     },
-    "portfolio_nominal_return_mean": "7.329%",
-    "portfolio_std": "3.1475%",
-    "required_nest_egg": 13210076142,
-    "projected_fund_p50": 2959688719.0,
-    "fund_gap_positive_means_surplus": -10250387423,
-    "is_on_track": false,
+    "portfolio_nominal_return_mean": "7.707%",
+    "portfolio_std": "3.4862%",
+    "required_nest_egg": 1920000000,
+    "projected_fund_p50": 2314006659.0,
+    "fund_gap_positive_means_surplus": 394006659,
+    "is_on_track": true,
     "monthly_contribution_current": 1600000,
     "instruments_in_portfolio": [
       "deposito",
@@ -85,57 +85,60 @@
   },
   "sensitivity": {
     "base": {
-      "fund_p50": 2959688719,
-      "ruin_probability": 1.0
+      "fund_p50": 2314006659,
+      "ruin_probability": 0.0867
     },
     "if_inflation_plus_1pct": {
-      "fund_p50": 2613079492,
-      "ruin_probability": 1.0,
-      "ruin_change": 0.0,
-      "fund_change_pct": -11.7
+      "fund_p50": 1980396544,
+      "ruin_probability": 0.5485,
+      "ruin_change": 0.4618,
+      "fund_change_pct": -14.4
     },
     "if_retirement_delayed_3yr": {
-      "fund_p50": 3789106846,
-      "ruin_probability": 1.0,
-      "ruin_change": 0.0,
-      "fund_change_pct": 28.0
+      "fund_p50": 2887237652,
+      "ruin_probability": 0.0103,
+      "ruin_change": -0.0764,
+      "fund_change_pct": 24.8
     },
     "if_savings_rate_plus_10pct": {
-      "fund_p50": 4327725688,
-      "ruin_probability": 1.0,
-      "ruin_change": 0.0,
-      "fund_change_pct": 46.2
+      "fund_p50": 3244828929,
+      "ruin_probability": 0.0039,
+      "ruin_change": -0.0828,
+      "fund_change_pct": 40.2
     }
   },
   "ab_test_result": {
     "hypothesis": "H1: Glide Path (B) menghasilkan ruin probability lebih rendah dari Fixed (A)",
     "strategy_a_fixed": {
-      "ruin_probability": 1.0,
-      "label": "Fixed Allocation"
+      "ruin_probability": 0.0437,
+      "label": "Fixed Allocation",
+      "risk_profile": "moderate"
     },
     "strategy_b_glide_path": {
-      "ruin_probability": 1.0,
-      "label": "Adaptive Glide Path"
+      "ruin_probability": 0.0904,
+      "label": "Adaptive Glide Path",
+      "risk_profile_decumulation": "conservative"
     },
-    "improvement": 0.0,
-    "improvement_pct": 0.0,
-    "u_statistic": 50000000.0,
+    "improvement": -0.0467,
+    "improvement_pct": -106.9,
+    "test_statistic": 6475.0,
     "p_value": 1.0,
+    "test_type": "Wilcoxon Signed-Rank (paired, one-sided)",
     "statistically_significant": false,
     "winner": "A (Fixed)",
-    "interpretation": "Glide Path mengurangi ruin probability sebesar 0.0 pp. Perbedaan TIDAK signifikan secara statistik."
+    "interpretation": "Glide Path (decumulation=conservative) mengurangi ruin probability sebesar -4.7 pp. Perbedaan TIDAK signifikan secara statistik."
   },
   "actionable_insights": [
-    "Dalam skenario median, dana Anda memiliki peluang 0.0% untuk bertahan hingga usia 96 tahun.",
-    "⚠️ Ruin probability Anda (100.0%) TINGGI. Pertimbangkan meningkatkan kontribusi atau menunda usia pensiun.",
-    "Inflasi kesehatan (~0.9× CPI umum, data BPS 2015-2025) adalah faktor biaya signifikan di usia 65+. Pertimbangkan asuransi kesehatan seumur hidup untuk melindungi dana pensiun."
+    "Dalam skenario median, dana Anda memiliki peluang 99.3% untuk bertahan hingga usia 106 tahun.",
+    "Menunda pensiun 3 tahun adalah lever paling efektif: menurunkan ruin probability sebesar 7.6 pp dan meningkatkan dana sebesar 24.8%.",
+    "Inflasi sektor kesehatan memiliki pola mean-reversion tersendiri (theta ~1.2%, kappa 0.35, data BPS 2016-2025). Biaya OOP meningkat signifikan di usia 65+. Pertimbangkan asuransi kesehatan seumur hidup untuk melindungi dana pensiun."
   ],
   "metadata": {
     "n_simulations": 10000,
     "random_seed": 42,
-    "inflation_model": "Ornstein-Uhlenbeck (calibrated BPS 2010-2024)",
+    "inflation_model": "Ornstein-Uhlenbeck (dikalibrasi dari BPS 2016-2025, 102 obs)",
     "return_model": "Log-normal with correlation matrix",
-    "mortality_source": "TMPI 2023 (BPJS/PAI/ITB): mortality_clean.csv",
+    "mortality_source": "TMPI 2023 (BPJS/PAI/ITB): mortality_clean.csv + A/E adjustment (ae_ratio_clean.csv 2018-2022)",
     "currency": "IDR",
     "version": "1.0.0"
   }

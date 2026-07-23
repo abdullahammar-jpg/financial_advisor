@@ -10,6 +10,7 @@ from src.calculator import RetirementCalculator, UserProfile
 from src.config import SECTOR_SALARY_GROWTH, RISK_PROFILES
 from src.actuarial import get_mortality_table
 
+#! Konfigurasi awal halaman streamlit dashboard
 st.set_page_config(
     page_title="Proyeksi Dana Pensiun",
     page_icon="📊",
@@ -17,6 +18,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
+#! Custom Styling CSS untuk tampilan card dan badge berestetika premium
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap');
@@ -83,6 +85,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 st.markdown("Kalkulator pensiun **probabilistik** berbasis *Monte Carlo Simulation* (10.000 iterasi). Memperhitungkan data aktuaria BPJS (TMPI 2023), model inflasi stokastik BPS, dan volatilitas pasar nyata.")
 
+#! Membuat panel input data pribadi & finansial di Sidebar Kiri
 with st.sidebar:
     st.header("1. Data Pribadi")
     name = st.text_input("Nama", value="Rizky")
@@ -100,6 +103,7 @@ with st.sidebar:
     replacement_ratio = st.slider("Target Gaya Hidup Pensiun (% dari gaji terakhir)", min_value=30, max_value=150, value=70, step=5, help="Standar: 70%. Frugal: 40-50%. Mewah: >100%.")
     has_health_insurance = st.checkbox("Sudah Punya Asuransi Kesehatan Purna Jual?", value=False, help="Jika tidak dicentang, dana pensiun akan dihantam inflasi medis tinggi (>10%/thn) di atas usia 65 tahun.")
     
+    # Ambil info aktuaria harapan hidup riil
     mt = get_mortality_table()
     act_sum = mt.get_planning_summary(age, retirement_age, gender)
     default_p90 = act_sum["p90_survival_age"]
@@ -127,11 +131,11 @@ with st.sidebar:
     )
     
     include_pandemic_risk = st.checkbox("Gunakan Risiko Pandemi/Krisis (Trendline Growth)", value=True, help="Jika dicentang, menggunakan growth rate pesimis (historis termasuk masa drop covid).")
-    
     custom_deposit = st.number_input("Bunga Deposito / Bank Digital (% per tahun)", min_value=1.0, max_value=15.0, value=5.0, step=0.5)
 
     run_sim = st.button("Jalankan Simulasi Monte Carlo", use_container_width=True, type="primary")
 
+#! Fungsi ter-cache untuk menjalankan komputasi simulasi agar responsif
 @st.cache_data(show_spinner=False)
 def get_simulation_results(name, age, gender, monthly_salary, savings_rate, retirement_age, risk_profile, sector, include_pandemic_risk, custom_deposit_rate, custom_planning_age, current_assets, annual_bonus_months, replacement_ratio, has_health_insurance):
     p = UserProfile(
@@ -145,6 +149,7 @@ def get_simulation_results(name, age, gender, monthly_salary, savings_rate, reti
     calc = RetirementCalculator(n_simulations=10_000)
     return calc.calculate(p)
 
+#! Pengecekan input valid & penjalanan simulasi utama
 if run_sim:
     if retirement_age <= age:
         st.error("🚨 Usia pensiun harus lebih besar dari usia saat ini.")
@@ -166,6 +171,7 @@ if run_sim:
     status_ruin = "memiliki probabilitas kecukupan dana yang optimal" if res.projection['median_p50']['ruin_probability'] < 0.15 else "memiliki risiko tinggi kekurangan dana (shortfall)"
     st.info(f"💡 **Kesimpulan:** Berdasarkan alokasi tabungan sebesar **Rp {monthly_save:,.0f}** per bulan, proyeksi dana pensiun Anda **{status_ruin}** untuk menunjang standar hidup hingga usia **{custom_planning_age}** tahun.")
     
+    # Tombol download laporan
     report_text = f"""Laporan Proyeksi Pensiun untuk {name}
 Usia Saat Ini: {age}
 Target Pensiun: {retirement_age}
@@ -179,6 +185,7 @@ Kapasitas Penarikan Bulanan: Rp {res.projection['median_p50']['annual_withdrawal
 """
     st.download_button("📄 Download Laporan (TXT)", data=report_text, file_name=f"Laporan_Pensiun_{name}.txt", mime="text/plain")
     
+    #! Menampilkan metrik aktuaria & risiko umur panjang
     st.subheader("📊 Fundamental Asumsi Anda")
     col1, col2, col3 = st.columns(3)
     with col1:
@@ -192,13 +199,11 @@ Kapasitas Penarikan Bulanan: Rp {res.projection['median_p50']['annual_withdrawal
         desc_text    = "Risiko depresiasi daya beli akibat inflasi tinggi (masa pensiun > 30 tahun)." if is_high_risk else "Durasi pensiun wajar (< 30 tahun), risiko inflasi relatif terkendali."
         st.markdown(f"<div class='metric-card'><div class='metric-label'>Status Risiko Umur Panjang</div><div style='margin-bottom:8px;'><span class='{badge_class}'>{status_text}</span></div><small style='color:#94a3b8; font-family:\"Outfit\", sans-serif;'>{desc_text}</small></div>", unsafe_allow_html=True)
 
-
+    #! Menampilkan hasil proyeksi 3 skenario dalam bentuk Tab
     st.subheader("💰 Hasil Proyeksi Dana Saat Pensiun (Umur {age} → {ret_age})".format(age=age, ret_age=retirement_age))
-    
     tab1, tab2, tab3, tab4 = st.tabs(["Skenario Median (P50)", "Skenario Pesimis (P10)", "Skenario Optimis (P90)", "📈 Visualisasi Grafik"])
     
     def render_scenario_tab(scen_key):
-        
         data = res.projection[scen_key]
         ruin_prob = data['ruin_probability']
         fund_ret = data['fund_at_retirement']
@@ -228,6 +233,7 @@ Kapasitas Penarikan Bulanan: Rp {res.projection['median_p50']['annual_withdrawal
     with tab2: render_scenario_tab("pessimistic_p10")
     with tab3: render_scenario_tab("optimistic_p90")
     
+    #! Menampilkan plot garis interpolasi jalannya proyeksi akumulasi/dekumulasi dana pensiun
     with tab4:
         st.markdown("### 📈 Visualisasi Distribusi Monte Carlo (Nilai dalam Rupiah)")
         st.info("💡 Grafik di bawah menunjukkan estimasi saldo tabungan Anda dalam mata uang Rupiah (IDR) seiring bertambahnya usia.")
@@ -262,7 +268,6 @@ Kapasitas Penarikan Bulanan: Rp {res.projection['median_p50']['annual_withdrawal
         s_p90 = build_trajectory("optimistic_p90", "P90 (Optimis)")
         
         df_plot = pd.concat([s_p90, s_p50, s_p10], axis=1).reset_index().rename(columns={"index": "Umur"})
-        
         df_melt = df_plot.melt(id_vars=["Umur"], var_name="Skenario", value_name="Saldo")
         
         fig = px.line(df_melt, x="Umur", y="Saldo", color="Skenario",
@@ -282,8 +287,8 @@ Kapasitas Penarikan Bulanan: Rp {res.projection['median_p50']['annual_withdrawal
 
     st.divider()
 
+    #! Menampilkan perbandingan A/B Test & Actionable Insights
     colA, colB = st.columns(2)
-    
     with colA:
         st.subheader("🔬 A/B Test: Strategi Investasi")
         ab = res.ab_test_result
@@ -299,6 +304,7 @@ Kapasitas Penarikan Bulanan: Rp {res.projection['median_p50']['annual_withdrawal
 
     st.divider()
 
+    #! Menampilkan stress testing terhadap krisis ekonomi historis
     st.subheader("⚡ Stress Testing: Skenario Krisis Makroekonomi Historis")
     st.markdown("Analisis ketahanan portofolio dana pensiun terhadap **kejutan ekonomi (economic shock)** berdasarkan data krisis historis global dan domestik.")
 

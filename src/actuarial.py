@@ -14,8 +14,45 @@ class MortalityTable:
         self._lx_female: dict = {}
         self._max_age: int = 111  
         self._source: str = ""
+        self._ae_male: dict = {}    # A/E ratio per usia (male)
+        self._ae_female: dict = {}  # A/E ratio per usia (female)
+        self._load_ae_ratio()       # muat A/E sebelum _load()
         self._load()
 
+    #! Muat A/E ratio dari ae_ratio_clean.csv untuk mortality improvement factor
+    def _load_ae_ratio(self):
+        """
+        A/E (Actual-to-Expected) ratio dari BPJS 2018-2022.
+        Nilai > 1: mortalitas aktual lebih tinggi dari tabel standar (mis. COVID).
+        Nilai < 1: mortalitas aktual lebih rendah (mis. underreporting).
+        Digunakan untuk menyesuaikan qx agar lebih mencerminkan pengalaman Indonesia.
+        """
+        fp = Path(__file__).parents[1] / "data" / "processed" / "ae_ratio_clean.csv"
+        if not fp.exists():
+            return  # fallback: tidak ada adjustment
+        try:
+            df = pd.read_csv(fp)
+            if "age" not in df.columns:
+                return
+            if "ae_avg_male" in df.columns:
+                self._ae_male = dict(zip(df["age"].astype(int), df["ae_avg_male"].fillna(1.0)))
+            if "ae_avg_female" in df.columns:
+                self._ae_female = dict(zip(df["age"].astype(int), df["ae_avg_female"].fillna(1.0)))
+            print(f"[actuarial.py] A/E ratio dimuat: {len(self._ae_male)} usia dari ae_ratio_clean.csv")
+        except Exception as e:
+            print(f"[actuarial.py] Gagal load ae_ratio_clean.csv: {e}")
+
+    def _apply_ae(self, qx_dict: dict, gender: str) -> dict:
+        """Terapkan A/E adjustment ke qx per usia."""
+        ae = self._ae_male if gender == "male" else self._ae_female
+        if not ae:
+            return qx_dict  # tidak ada data A/E
+        return {
+            age: min(float(qx) * float(ae.get(age, 1.0)), 1.0)
+            for age, qx in qx_dict.items()
+        }
+
+    #! Fungsi pembuka pemuatan tabel mortalitas
     def _load(self):
         if self.table_path.exists():
             self._load_from_csv()
@@ -27,6 +64,7 @@ class MortalityTable:
             )
             self._load_gompertz_synthetic()
 
+    #! Pemuatan data qx (peluang mati) dari dataset processed mortality_clean.csv
     def _load_from_csv(self):
         df = pd.read_csv(self.table_path)
         required_cols = {"age", "qx_male", "qx_female"}
@@ -36,21 +74,28 @@ class MortalityTable:
 
         self._max_age = int(df["age"].max())
 
+        # Mengisi data usia yang bolong menggunakan interpolasi cubic spline
         full_ages = pd.DataFrame({"age": range(0, self._max_age + 1)})
         df = full_ages.merge(df[["age", "qx_male", "qx_female"]], on="age", how="left")
         df = df.interpolate(method="cubic")
         df["qx_male"]   = df["qx_male"].clip(0.0001, 1.0)
         df["qx_female"] = df["qx_female"].clip(0.0001, 1.0)
         
+        # Batasi peluang mati di usia maksimal adalah pasti (1.0)
         df.loc[df["age"] == self._max_age, ["qx_male", "qx_female"]] = 1.0
 
         self._qx_male   = dict(zip(df["age"], df["qx_male"]))
         self._qx_female = dict(zip(df["age"], df["qx_female"]))
+        # Terapkan A/E adjustment dari pengalaman BPJS 2018-2022
+        self._qx_male   = self._apply_ae(self._qx_male,   "male")
+        self._qx_female = self._apply_ae(self._qx_female, "female")
         self._compute_lx()
         self._source = f"TMPI 2023 (BPJS/PAI/ITB): {self.table_path.name}"
+        if self._ae_male:
+            self._source += " + A/E adjustment (ae_ratio_clean.csv 2018-2022)"
 
+    #! Pemuatan model kematian sintetis Gompertz-Makeham jika file data absen
     def _load_gompertz_synthetic(self):
-        
         params = {
             "male":   {"A": 0.0007, "B": 0.000060, "c": 1.0915},
             "female": {"A": 0.0004, "B": 0.000035, "c": 1.0920},
@@ -61,11 +106,11 @@ class MortalityTable:
                 if age == 100:
                     qx_dict[age] = 1.0
                 else:
-                    
+                    # Persamaan Gompertz-Makeham
                     mu = p["A"] + p["B"] * (p["c"] ** age)
-                    
                     qx = min(1 - np.exp(-mu), 1.0)
                     
+                    # Kalibrasi manual khusus usia balita/anak-anak
                     if age == 0:
                         qx = max(qx, 0.024)
                     elif age < 5:
@@ -78,7 +123,10 @@ class MortalityTable:
 
         self._compute_lx()
         self._source = "Synthetic Gompertz-Makeham (Indonesia-calibrated, fallback)"
+        if self._ae_male:
+            self._source += " + A/E adjustment (ae_ratio_clean.csv 2018-2022)"
 
+    #! Kalkulasi lx (jumlah orang yang bertahan hidup dari kohort 100.000 jiwa)
     def _compute_lx(self):
         radix = 100_000
         for gender in ["male", "female"]:
@@ -93,10 +141,12 @@ class MortalityTable:
             else:
                 self._lx_female = lx
 
+    #! Mengambil nilai qx untuk usia dan gender tertentu
     def get_qx(self, age: int, gender: Literal["male", "female"]) -> float:
         qx = self._qx_male if gender == "male" else self._qx_female
         return qx.get(int(age), 1.0)
 
+    #! Menghitung probabilitas bertahan hidup dari current_age s.d. target_age
     def survival_probability(
         self,
         current_age: int,
@@ -112,6 +162,7 @@ class MortalityTable:
             return 0.0
         return l_target / l_current
 
+    #! Menghitung rata-rata sisa harapan hidup di usia tertentu
     def expected_remaining_life(
         self, age: int, gender: Literal["male", "female"]
     ) -> float:
@@ -122,6 +173,7 @@ class MortalityTable:
         ex = sum(lx.get(t, 0) for t in range(int(age) + 1, self._max_age + 1)) / l_x
         return round(ex, 2)
 
+    #! Menghitung persentil kematian / survival age untuk merencanakan ketahanan dana
     def get_longevity_percentile(
         self,
         current_age: int,
@@ -134,6 +186,7 @@ class MortalityTable:
                 return target_age
         return self._max_age
 
+    #! Menghasilkan ringkasan laporan aktuaria lengkap (harapan hidup, longevity risk)
     def get_planning_summary(
         self, current_age: int, retirement_age: int, gender: Literal["male", "female"]
     ) -> dict:
@@ -169,6 +222,7 @@ class MortalityTable:
 
 _mortality_table: Optional[MortalityTable] = None
 
+#! Singletone getter untuk tabel mortalitas
 def get_mortality_table() -> MortalityTable:
     global _mortality_table
     if _mortality_table is None:

@@ -1,20 +1,21 @@
 import re
 import sys
 import warnings
-from pathlib import Path
-
 import numpy as np
 import pandas as pd
+from pathlib import Path
 from scipy.stats import linregress
 
 warnings.filterwarnings("ignore")
 
+# Define directories
 SCRIPT_DIR = Path(__file__).resolve().parent   
 ROOT       = SCRIPT_DIR.parent                 
 RAW        = ROOT / "data" / "raw"
 PROC       = ROOT / "data" / "processed"
 PROC.mkdir(parents=True, exist_ok=True)
 
+#! Fungsi helper untuk membersihkan dan mengonversi format angka
 def parse_num(val):
     if pd.isna(val):
         return np.nan
@@ -22,6 +23,7 @@ def parse_num(val):
     if s in ("-", "", "nan", "#N/A"):
         return np.nan
     
+    # Menghapus karakter selain angka, minus, koma, dan titik
     s = re.sub(r"[^\d.,-]", "", s)
     if not s:
         return np.nan
@@ -29,24 +31,23 @@ def parse_num(val):
     has_comma = "," in s
     has_dot   = "." in s
 
+    # Menangani campuran koma dan titik sebagai pemisah ribuan/desimal
     if has_comma and has_dot:
-        
         last_comma = s.rfind(",")
         last_dot   = s.rfind(".")
         if last_comma > last_dot:
-            
             s = s.replace(".", "").replace(",", ".")
         else:
-            
             s = s.replace(",", "")
     elif has_comma and not has_dot:
-        
-        s = s.replace(",", ".")
-    
+        parts = s.split(",")
+        if len(parts) > 1 and all(len(p) == 3 for p in parts[1:]):
+            s = s.replace(",", "")
+        else:
+            s = s.replace(",", ".")
     elif has_dot and not has_comma:
         parts = s.split(".")
         if len(parts) > 1 and all(len(p) == 3 for p in parts[1:]):
-            
             s = s.replace(".", "")
         
     try:
@@ -54,6 +55,7 @@ def parse_num(val):
     except ValueError:
         return np.nan
 
+#! Fungsi helper untuk mengonversi persentase ke desimal (float)
 def pct_to_float(val):
     if pd.isna(val):
         return np.nan
@@ -65,6 +67,7 @@ def pct_to_float(val):
             return np.nan
     return parse_num(val)
 
+#! Fungsi untuk mencari baris data spesifik Indonesia pada file CSV BPS
 def find_indonesia_row(filepath, col_idx=0):
     df = pd.read_csv(filepath, header=0, dtype=str, encoding="utf-8-sig")
     col = df.columns[col_idx]
@@ -75,6 +78,7 @@ def find_indonesia_row(filepath, col_idx=0):
         raise ValueError(f"Baris INDONESIA tidak ditemukan: {filepath.name}")
     return df[mask].iloc[0]
 
+#! Fungsi untuk mentransformasikan data kolom bulanan BPS menjadi deret baris (long format)
 def monthly_series_from_bps(series):
     records = []
     for col, val in series.items():
@@ -88,6 +92,7 @@ def monthly_series_from_bps(series):
     df["year_month"] = pd.to_datetime(df["year_month"], format="%Y-%m")
     return df.sort_values("year_month").reset_index(drop=True)
 
+#! Fungsi helper untuk membersihkan format angka desimal bertitik
 def parse_dot_decimal(val):
     if pd.isna(val):
         return np.nan
@@ -100,6 +105,7 @@ def parse_dot_decimal(val):
     except ValueError:
         return np.nan
 
+#! Fungsi untuk imputasi data kosong menggunakan interpolasi linear
 def impute_linear(series: pd.Series) -> pd.Series:
     return series.interpolate("linear").ffill().bfill()
 
@@ -112,6 +118,7 @@ print("=" * 55)
 
 CPI_DIR = RAW / "CPI"
 
+#! Memuat data CPI Umum historis
 def load_cpi_umum(pattern):
     matches = [f for f in CPI_DIR.glob("*.csv")
                if pattern.lower() in f.name.lower()]
@@ -123,17 +130,20 @@ df_15_19 = load_cpi_umum("2015-2019")
 df_20_23 = load_cpi_umum("2020-2023")  
 df_24_26 = load_cpi_umum("2024-2026")  
 
+# Batasi data uji s.d. Desember 2025
 df_24_26 = df_24_26[df_24_26["year_month"] <= "2025-12-01"]
 
 df_15_19["base_year"] = "2012=100"
 df_20_23["base_year"] = "2018=100"
 df_24_26["base_year"] = "2022=100"
 
+#! Mengambil nilai spesifik dari periode tahun-bulan tertentu
 def get_val(df, ym_str):
     mask = df["year_month"].dt.strftime("%Y-%m") == ym_str
     vals = df.loc[mask, "index_value"].values
     return vals[0] if len(vals) and not np.isnan(vals[0]) else None
 
+#! Perhitungan skala chain-linking untuk menyatukan indeks IHK tahun dasar berbeda
 v_dec19_base12 = get_val(df_15_19, "2019-12")  
 v_jan20_base18 = get_val(df_20_23, "2020-01")  
 
@@ -156,6 +166,7 @@ df_a_trim = df_a[df_a["year_month"] < "2020-01-01"]
 df_b_trim = df_b[(df_b["year_month"] >= "2020-01-01") & (df_b["year_month"] < "2024-01-01")]
 df_c_trim = df_c[df_c["year_month"] >= "2024-01-01"]
 
+#! Menggabungkan seluruh data CPI Umum menjadi satu tabel deret waktu terpadu
 cpi_all = (
     pd.concat([
         df_a_trim[["year_month", "index_chain", "base_year"]],
@@ -166,22 +177,28 @@ cpi_all = (
     .reset_index(drop=True)
 )
 
+#! Pengecekan dan imputasi missing value serta kalkulasi laju inflasi bulanan (MoM) & tahunan (YoY)
 cpi_all["index_chain"]       = impute_linear(cpi_all["index_chain"])
 cpi_all["inflation_mom_pct"] = cpi_all["index_chain"].pct_change(1) * 100
 cpi_all["inflation_yoy_pct"] = cpi_all["index_chain"].pct_change(12) * 100
 
 cpi_all["year_month_str"] = cpi_all["year_month"].dt.strftime("%Y-%m")
 
+#! Menyimpan output data inflasi bulanan umum
 out_monthly = PROC / "cpi_monthly.csv"
-cpi_all.rename(columns={"index_chain":"cpi_index_rebased","year_month_str":"year_month"})       [["year_month","cpi_index_rebased","inflation_mom_pct","inflation_yoy_pct","base_year"]]       .to_csv(out_monthly, index=False)
+cpi_all.rename(columns={"index_chain":"cpi_index_rebased","year_month_str":"year_month"}) \
+       [["year_month","cpi_index_rebased","inflation_mom_pct","inflation_yoy_pct","base_year"]] \
+       .to_csv(out_monthly, index=False)
 print(f"  OK cpi_monthly.csv    -- {len(cpi_all)} baris")
 
+#! Validasi transisi pergantian tahun dasar
 v_dec19 = cpi_all.loc[cpi_all["year_month_str"]=="2019-12", "index_chain"].values
 v_jan20 = cpi_all.loc[cpi_all["year_month_str"]=="2020-01", "index_chain"].values
 if len(v_dec19) and len(v_jan20):
     mom_transition = (v_jan20[0] / v_dec19[0] - 1) * 100
     print(f"  Validasi transisi Des19->Jan20: {mom_transition:+.2f}% MoM (harus kecil)")
 
+#! Membuat data inflasi tahunan (diambil dari data Desember tiap tahun)
 cpi_dec = cpi_all[cpi_all["year_month"].dt.month == 12].copy()
 cpi_dec["year"]       = cpi_dec["year_month"].dt.year
 cpi_dec["inflasi_pct"] = cpi_dec["inflation_yoy_pct"].round(2)
@@ -190,7 +207,7 @@ cpi_dec[["year","inflasi_pct","base_year"]].to_csv(PROC/"cpi_clean.csv", index=F
 print(f"  OK cpi_clean.csv      -- {len(cpi_dec)} tahun")
 
 print("\n2. CPI Sektoral (Makanan, Kesehatan, Pendidikan)")
-sep()
+print("=" * 55)
 
 SEKTOR_DIRS = {
     "makanan":    RAW / "CPI Sektor" / "Sektor 01 Makanan",
@@ -207,6 +224,7 @@ cpi_umum_ref = (
 
 sektor_all, multipliers = [], []
 
+#! Pembersihan dan penyelarasan IHK Sektoral
 for sektor, folder in SEKTOR_DIRS.items():
     if not folder.exists():
         print(f"  SKIP {sektor}: folder tidak ada")
@@ -222,17 +240,38 @@ for sektor, folder in SEKTOR_DIRS.items():
         except Exception as e:
             print(f"  WARN {sektor}/{f.name}: {e}")
 
-    if not pieces:
-        print(f"  SKIP {sektor}: tidak ada data")
+    if not pieces or len(pieces) != 3:
+        print(f"  SKIP {sektor}: tidak memiliki 3 seri data untuk di-chain-link")
         continue
 
-    df_s = (
-        pd.concat(pieces)
-        .drop_duplicates("year_month")
-        .sort_values("year_month")
-        .reset_index(drop=True)
-    )
+    # Fungsi helper untuk chain-linking sektoral
+    def get_val_s(df, ym):
+        v = df.loc[df["year_month"].dt.strftime("%Y-%m") == ym, "index_value"].values
+        return v[0] if len(v) and not np.isnan(v[0]) else None
 
+    # Chain-link scale factor (2018->2012)
+    v_dec19 = get_val_s(pieces[0], "2019-12")
+    v_jan20 = get_val_s(pieces[1], "2020-01")
+    s_scale2 = (v_dec19 / v_jan20) if (v_dec19 and v_jan20) else 1.0
+
+    # Chain-link scale factor (2022->2012)
+    v_dec23 = get_val_s(pieces[1], "2023-12")
+    v_dec23_scaled = v_dec23 * s_scale2 if v_dec23 else None
+    v_jan24 = get_val_s(pieces[2], "2024-01")
+    s_scale3 = (v_dec23_scaled / v_jan24) if (v_dec23_scaled and v_jan24) else 1.0
+
+    p0 = pieces[0].copy(); p0["index_chain"] = p0["index_value"]
+    p1 = pieces[1].copy(); p1["index_chain"] = p1["index_value"] * s_scale2
+    p2 = pieces[2].copy(); p2["index_chain"] = p2["index_value"] * s_scale3
+
+    p0 = p0[p0["year_month"] < "2020-01-01"]
+    p1 = p1[(p1["year_month"] >= "2020-01-01") & (p1["year_month"] < "2024-01-01")]
+    p2 = p2[p2["year_month"] >= "2024-01-01"]
+
+    df_s = pd.concat([p0, p1, p2]).sort_values("year_month").reset_index(drop=True)
+    df_s["index_value"] = df_s["index_chain"]
+
+    #! Pengecekan missing value pada data indeks sektoral dan melakukan imputasi
     n_miss = df_s["index_value"].isna().sum()
     if n_miss:
         df_s["index_value"] = impute_linear(df_s["index_value"])
@@ -246,6 +285,7 @@ for sektor, folder in SEKTOR_DIRS.items():
 
     sektor_all.append(df_s[["sektor","year_month","index_value","inflation_mom_pct","inflation_yoy_pct"]])
 
+    #! Perhitungan multiplier inflasi sektoral terhadap inflasi umum (excl. anomali krisis)
     m = df_s[["ym","inflation_yoy_pct"]].merge(cpi_umum_ref, on="ym", how="inner")
     m = m.dropna(subset=["inflation_yoy_pct","umum_yoy"])
     COVID_ANOMALY_MONTHS = {"2020-03","2020-04","2020-05","2020-06","2021-01","2021-02","2022-09","2022-10","2022-11"}
@@ -256,6 +296,7 @@ for sektor, folder in SEKTOR_DIRS.items():
     multipliers.append({"sektor": sektor, "multiplier_median": med_mult, "n_obs": len(ratio)})
     print(f"  OK {sektor}: {len(df_s)} baris | multiplier = {med_mult}x")
 
+#! Menyimpan output data sektoral bulanan dan data median multiplier sektoral
 if sektor_all:
     pd.concat(sektor_all, ignore_index=True).to_csv(PROC/"cpi_sektor_monthly.csv", index=False)
     print(f"  OK cpi_sektor_monthly.csv")
@@ -264,7 +305,7 @@ pd.DataFrame(multipliers).to_csv(PROC/"cpi_sektor_multiplier.csv", index=False)
 print(f"  OK cpi_sektor_multiplier.csv")
 
 print("\n3. Mortalitas & A/E Ratio (TMPI 2023)")
-sep()
+print("=" * 55)
 
 MORT_DIR  = RAW / "Tabel Mortalitas Indonesia (TMPI JKN 2023)"
 mort_file = MORT_DIR / "Tabel_Mortalitas_Penduduk_Indonesia_2023.csv"
@@ -273,10 +314,12 @@ if not mort_file.exists():
     print(f"  ERROR: {mort_file.name} tidak ditemukan!")
     sys.exit(1)
 
+#! Memuat dan membersihkan dataset mortalitas
 df_mort = pd.read_csv(mort_file, dtype=str, encoding="utf-8-sig")
 df_mort = df_mort.dropna(subset=["age"])
 df_mort = df_mort[df_mort["age"].str.strip() != ""]
 
+#! Konversi tipe data kolom numerik dan rasio persentase
 NUM_COLS = ["age","exposure_male","dx_male","expectedlife_male","qx_male","px_male",
             "exposure_female","dx_female","expectedlife_female","qx_female","px_female"]
 for c in NUM_COLS:
@@ -290,6 +333,7 @@ for c in AE_COLS:
 df_mort["age"] = df_mort["age"].apply(parse_num).astype(int)
 df_mort = df_mort.sort_values("age").reset_index(drop=True)
 
+#! Menyimpan data mortalitas dan tabel Actual-to-Expected (A/E) ratio yang bersih
 MORT_KEEP = [c for c in NUM_COLS if c in df_mort.columns]
 df_mort[MORT_KEEP].to_csv(PROC/"mortality_clean.csv", index=False)
 print(f"  OK mortality_clean.csv  -- usia 0-{df_mort['age'].max()}, {len(df_mort)} baris")
@@ -309,7 +353,7 @@ else:
     print("  WARN: Tidak ada kolom A/E ditemukan di file mortalitas.")
 
 print("\n4. Gaji Per Sektor (BPS)")
-sep()
+print("=" * 55)
 
 SALARY_DIR  = RAW / "Rata-rata Upah Gaji per Sektor 2015-2026 (February Data - BPS Rakernas)"
 salary_file = SALARY_DIR / "Rata-rata upah gaji per sektor 2015 - 2026 BPS.csv"
@@ -317,6 +361,7 @@ salary_file = SALARY_DIR / "Rata-rata upah gaji per sektor 2015 - 2026 BPS.csv"
 if not salary_file.exists():
     print(f"  ERROR: {salary_file.name} tidak ditemukan!")
 else:
+    #! Memuat dan merapikan dataset gaji sektoral BPS
     df_sal = pd.read_csv(salary_file, dtype=str, encoding="utf-8-sig")
     sektor_col = df_sal.columns[0]
     year_cols  = [c for c in df_sal.columns if re.match(r"^\d{4}$", str(c).strip())]
@@ -327,6 +372,7 @@ else:
     df_sal.to_csv(PROC/"salary_clean.csv", index=False)
     print(f"  OK salary_clean.csv     -- {len(df_sal)} sektor, {year_cols[0]}-{year_cols[-1]}")
 
+    #! Perhitungan pertumbuhan gaji (CAGR normal vs CAGR terhantam krisis/covid)
     COVID_YEARS = {2020, 2021}
     growth_rows = []
     for _, row in df_sal.iterrows():
@@ -358,6 +404,7 @@ else:
             "year_end":          ymax,
         })
 
+    #! Menyimpan data laju pertumbuhan gaji sektoral terhitung
     df_growth = pd.DataFrame(growth_rows)
     df_growth.to_csv(PROC/"salary_growth.csv", index=False)
     print(f"  OK salary_growth.csv    -- {len(df_growth)} sektor")
@@ -366,10 +413,11 @@ else:
         print(f"    {r['sektor'][:45]:<45} normal={r['growth_normal']:+.2%}  covid={r['growth_with_covid']:+.2%}")
 
 print("\n5. Data Investasi")
-sep()
+print("=" * 55)
 
 INV_DIR = RAW / "Investasi"
 
+#! Pembersihan dan kalkulasi data historis IHSG bulanan & tahunan
 ihsg_files = list((INV_DIR / "Monthly IHSG").glob("*.csv"))
 if not ihsg_files:
     print("  ERROR: File IHSG tidak ditemukan!")
@@ -384,17 +432,20 @@ else:
     df_ihsg["return_yoy_pct"] = df_ihsg["Close"].pct_change(12) * 100
     df_ihsg["year_month"]     = df_ihsg["Date"].dt.strftime("%Y-%m")
 
-    df_ihsg[["year_month","Close","return_mom_pct","return_yoy_pct"]]        .to_csv(PROC/"ihsg_monthly.csv", index=False)
+    df_ihsg[["year_month","Close","return_mom_pct","return_yoy_pct"]].to_csv(PROC/"ihsg_monthly.csv", index=False)
     print(f"  OK ihsg_monthly.csv     -- {len(df_ihsg)} baris")
 
     ihsg_ann = df_ihsg[df_ihsg["Date"].dt.month == 12].copy()
     ihsg_ann["year"] = ihsg_ann["Date"].dt.year
-    ihsg_ann[["year","return_yoy_pct"]]        .rename(columns={"return_yoy_pct":"ihsg_annual_return_pct"})        .to_csv(PROC/"ihsg_annual.csv", index=False)
+    ihsg_ann[["year","return_yoy_pct"]] \
+            .rename(columns={"return_yoy_pct":"ihsg_annual_return_pct"}) \
+            .to_csv(PROC/"ihsg_annual.csv", index=False)
 
     mean_ret = df_ihsg["return_yoy_pct"].dropna().mean()
     std_ret  = df_ihsg["return_yoy_pct"].dropna().std()
     print(f"  OK ihsg_annual.csv      -- mean YoY={mean_ret:.1f}%, std={std_ret:.1f}%")
 
+#! Fungsi untuk memproses data yield historis obligasi negara
 def load_yield(folder_name, label):
     folder = INV_DIR / folder_name
     files  = list(folder.glob("*.csv")) if folder.exists() else []
@@ -416,13 +467,12 @@ df_ob3  = load_yield("3 Tahun Obligasi 2015-2026",    "Obligasi 3Y")
 frames = {}
 if df_ob10 is not None:
     frames["ob10y_yield_pct"] = df_ob10.set_index("year_month")["yield_pct"]
-if df_ob3 is not None:
-    frames["ob3y_yield_pct"]  = df_ob3.set_index("year_month")["yield_pct"]
 
+
+#! Menggabungkan data yield obligasi 3Y dan 10Y menjadi satu file bersih
 if frames:
     df_inv = pd.DataFrame(frames).reset_index().rename(columns={"index":"year_month"})
     df_inv = df_inv.sort_values("year_month").reset_index(drop=True)
-    
     df_inv.to_csv(PROC/"investment_clean.csv", index=False)
     print(f"  OK investment_clean.csv -- {len(df_inv)} baris")
 
@@ -430,6 +480,7 @@ print("\n" + "=" * 55)
 print("SELESAI -- Semua output di data/processed/")
 print("=" * 55)
 
+#! Pengecekan keberadaan berkas-berkas hasil wrangling
 EXPECTED = [
     "cpi_monthly.csv", "cpi_clean.csv",
     "cpi_sektor_monthly.csv", "cpi_sektor_multiplier.csv",

@@ -1,9 +1,11 @@
 from pathlib import Path
 import csv
 
+# Define root paths
 _ROOT = Path(__file__).parents[1]
 _PROC = _ROOT / "data" / "processed"
 
+#! Pemuatan data inflasi historis Indonesia dari cpi_clean.csv
 cpi_processed_path = _PROC / "cpi_clean.csv"
 if cpi_processed_path.is_file():
     HISTORICAL_CPI_INDONESIA: dict[int, float] = {}
@@ -21,6 +23,7 @@ else:
     print(f"WARNING config.py: {cpi_processed_path} tidak ditemukan. Jalankan: python scripts/wrangle_all.py")
     HISTORICAL_CPI_INDONESIA = {}
 
+#! Pemuatan multiplier inflasi sektoral empiris (makanan, kesehatan, pendidikan)
 _mult_path = _PROC / "cpi_sektor_multiplier.csv"
 _mult_empiris = {"general": 1.00, "food": 1.269, "healthcare": 0.895, "education": 0.987}  
 if _mult_path.is_file():
@@ -35,19 +38,21 @@ if _mult_path.is_file():
 
 SECTORAL_INFLATION_MULTIPLIERS = {
     "general":    1.00,
-    "healthcare": _mult_empiris["healthcare"],  
-    "education":  _mult_empiris["education"],   
-    "food":       _mult_empiris["food"],         
+    "healthcare": _mult_empiris["healthcare"],  # Dikalibrasi dari data historis BPS
+    "education":  _mult_empiris["education"],   # Dikalibrasi dari data historis BPS
+    "food":       _mult_empiris["food"],        # Bahan makanan cenderung tumbuh 1.2x lebih cepat dibanding CPI umum
 }
 
+#! Parameter bawaan untuk model stokastik Ornstein-Uhlenbeck (OU)
 INFLATION_OU_PARAMS = {
-    "theta": 3.50,   
-    "kappa": 0.35,   
-    "sigma": 1.45,   
-    "floor": 0.50,   
-    "ceiling": 15.0, 
+    "theta": 3.50,   # Target jangka panjang Bank Indonesia (biasanya berkisar 3% s.d. 3.5%)
+    "kappa": 0.35,   # Kecepatan kembali ke target (mean-reversion speed) setelah terjadi shock
+    "sigma": 1.45,   # Tingkat volatilitas inflasi tahunan berdasarkan standar deviasi historis CPI
+    "floor": 0.50,   # Batas bawah inflasi untuk mencegah terjadinya deflasi ekstrem dalam simulasi
+    "ceiling": 15.0, # Batas atas inflasi untuk mencegah hiperinflasi yang tidak realistis dalam jangka panjang
 } 
 
+#! Parameter instrumen investasi (nominal return, std deviasi/volatilitas, pajak, dll.)
 INVESTMENT_INSTRUMENTS = {
     "deposito": {
         "name": "Deposito Bank",
@@ -107,7 +112,6 @@ INVESTMENT_INSTRUMENTS = {
     "rd_saham_idx": {
         "name": "Reksa Dana Saham / IDX Composite",
         "proxy_ticker": "^JKSE",
-        
         "real_return_mean": 3.60,
         "real_return_std":  13.10,
         "nominal_return_mean": 6.90,
@@ -119,6 +123,7 @@ INVESTMENT_INSTRUMENTS = {
     },
 }
 
+#! Nilai parameter hasil kalibrasi empiris (sebagai fallback jikalau data processed absen)
 EMPIRICAL_CALIBRATION = {
     "ihsg_nominal_mean_yoy":  6.90,
     "ihsg_std_yoy":          13.10,
@@ -128,6 +133,7 @@ EMPIRICAL_CALIBRATION = {
     "data_updated": "2026-05",
 }
 
+#! Alokasi aset untuk masing-masing tipe profil risiko investasi
 RISK_PROFILES = {
     "conservative": { 
         "label": "Konservatif",
@@ -165,33 +171,37 @@ RISK_PROFILES = {
 
 PROFILE_ORDER = ["very_aggressive", "aggressive", "moderate", "conservative"]
 
+#! Parameter konfigurasi simulasi Monte Carlo
 MONTE_CARLO = {
     "n_simulations": 10_000, 
     "random_seed": 42, 
     "time_step_months": 1,
 }
 
+#! Tingkat Penarikan Aman (SWR - Safe Withdrawal Rate) paska pensiun
 SAFE_WITHDRAWAL_RATES = {
-    "conservative":    0.030, 
-    "moderate":        0.035,
-    "aggressive":      0.040,
-    "very_aggressive": 0.045,
+    "conservative":    0.030, # Penarikan 3% per tahun agar modal tidak cepat habis karena yield aset rendah
+    "moderate":        0.035, # Penarikan 3.5% per tahun untuk profil moderat
+    "aggressive":      0.040, # Penarikan 4.0% per tahun - standard global "4% Rule" (Trinity Study)
+    "very_aggressive": 0.045, # Penarikan 4.5% per tahun karena potensi return kelas saham lebih tinggi
 }
 
+#! Parameter aktuaria (tingkat keyakinan perencanaan, perbaikan mortalitas, path file)
 ACTUARIAL = {
-    "planning_confidence_level": 0.90,  
-    "mortality_improvement_rate": 0.005,
-    
+    "planning_confidence_level": 0.90,  # Probabilitas kesuksesan minimum 90% dalam simulasi Monte Carlo
+    "mortality_improvement_rate": 0.005, # Kenaikan usia harapan hidup sebesar 0.5% per tahun (karena perbaikan gizi/medis)
     "mortality_table_path": str(_PROC / "mortality_clean.csv"),
     "ae_ratio_path":        str(_PROC / "ae_ratio_clean.csv"),
 }
 
+#! Parameter kontribusi gaji default
 CONTRIBUTION = {
     "salary_growth_rate":   0.05,   
     "annual_bonus_months":  1.0,    
     "bonus_savings_rate":   0.50,   
 }
 
+#! Pemuatan data laju pertumbuhan gaji per sektor industri BPS
 _sal_growth_path = _PROC / "salary_growth.csv"
 SECTOR_SALARY_GROWTH: dict = {}
 if _sal_growth_path.is_file():
@@ -202,21 +212,51 @@ if _sal_growth_path.is_file():
             _covid  = _row.get("growth_with_covid", "").strip()
             if _sektor and _normal:
                 SECTOR_SALARY_GROWTH[_sektor] = {
-                    "normal":              float(_normal),
-                    "with_pandemic_risk":  float(_covid) if _covid else float(_normal),
+                    "normal":             float(_normal),
+                    "with_pandemic_risk": float(_covid) if _covid else float(_normal),
+                    "std_dev":            None,  # akan diisi dari salary_clean.csv di bawah
                 }
 else:
     print(f"WARNING config.py: {_sal_growth_path} tidak ditemukan. Jalankan: python scripts/wrangle_all.py")
-    
     SECTOR_SALARY_GROWTH = {
-        "Rata-rata": {"normal": 0.0363, "with_pandemic_risk": 0.0471},
+        "Rata-rata": {"normal": 0.0363, "with_pandemic_risk": 0.0471, "std_dev": None},
     }
 
+#! Hitung std_dev laju pertumbuhan gaji dari salary_clean.csv (YoY per sektor)
+_sal_clean_path = _PROC / "salary_clean.csv"
+if _sal_clean_path.is_file():
+    try:
+        import pandas as _pd_cfg
+        _sal_df = _pd_cfg.read_csv(_sal_clean_path, index_col=0)
+        _year_cols = [c for c in _sal_df.columns if str(c).isdigit()]
+        for _sektor_raw, _row in _sal_df.iterrows():
+            _vals = _row[_year_cols].dropna().astype(float)
+            if len(_vals) >= 3:
+                # Hitung YoY growth rate per tahun
+                _yoy = _vals.pct_change().dropna()
+                _std = round(float(_yoy.std()), 4)
+                # Cari key yang cocok di SECTOR_SALARY_GROWTH (partial match)
+                for _k in SECTOR_SALARY_GROWTH:
+                    if _k[:15] in str(_sektor_raw)[:15] or str(_sektor_raw)[:15] in _k[:15]:
+                        SECTOR_SALARY_GROWTH[_k]["std_dev"] = _std
+                        break
+    except Exception as _e:
+        print(f"WARNING config.py: Gagal load salary_clean.csv untuk std_dev: {_e}")
+
+
+#! Rasio kebutuhan hidup paska pensiun & distribusi biaya medis berdasarkan klaster usia
+#   - Nilai 10%/18%/28% bersifat KONSERVATIF-MODERAT; biaya sesungguhnya bisa
+#     lebih tinggi tanpa asuransi kesehatan swasta yang memadai.
+#
 LIFESTYLE = {
-    "replacement_ratio": 0.70,  
+    "replacement_ratio": 0.70,  # Sumber: Standar umum perencanaan pensiun (replacement ratio 70%)
+                                 # Referensi: OJK POJK No. 5/2017; Mitchell & Fields (2005)
     "healthcare_cost_ratio": {
-        "age_55_65":  0.10,
-        "age_65_75":  0.18,
-        "age_75_plus": 0.28,
+        # Proporsi biaya kesehatan OOP terhadap total pengeluaran per tahun.
+        # Sumber: Adaptasi dari CRR Boston College (2022) + World Bank Indonesia (2023)
+        # Disesuaikan: angka AS diturunkan 20-30% karena JKN dan biaya hidup lebih rendah.
+        "age_55_65":  0.10,   # ~10%: Usia awal pensiun; sebagian besar masih sehat, BPJS aktif
+        "age_65_75":  0.18,   # ~18%: Penyakit kronis mulai dominan (DM, hipertensi, jantung)
+        "age_75_plus": 0.28,  # ~28%: Risiko katastropik tinggi; rawat inap lebih sering
     },
 }

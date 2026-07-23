@@ -19,6 +19,7 @@ def print_section(title: str):
 
 def main():
     
+    #! 1. Definisikan profil pengguna simulasi bawaan
     profile = UserProfile(
         name           = "Rizky",
         age            = 25,
@@ -42,45 +43,25 @@ def main():
     print(f"Salary Growth: {growth_rate*100:.2f}%/tahun (Pandemic Risk: {profile.include_pandemic_risk})")
     print(f"Custom Deposit Rate: {profile.custom_deposit_rate}% (Bunga Bank Digital/BPR)")
 
+    #! 2. Tampilkan metrik aktuaria harapan hidup
     print_section("1. Ringkasan Aktuarial")
     mt = get_mortality_table() 
     actuarial = mt.get_planning_summary(profile.age, profile.retirement_age, profile.gender) 
     
     print(f"  Sumber data mortalitas : {actuarial['source']}") 
-    
     print(f"  Expected death age     : {actuarial['expected_death_age']} tahun") 
-    
     print(f"  P50 survival age       : {actuarial['p50_survival_age']} tahun (50% masih hidup)") 
-    
     print(f"  P90 survival age       : {actuarial['p90_survival_age']} tahun (10% masih hidup)")
-    
     print(f"  Planning horizon       : {actuarial['planning_horizon_post_retirement']} tahun setelah pensiun")
-    
     print(f"  Longevity risk flag    : {'[!] YA' if actuarial['longevity_risk_flag'] else '[OK] TIDAK'}")
     
+    #! 3. Tampilkan parameter kalibrasi model inflasi OU
     print_section("2. Proyeksi Inflasi (Ornstein-Uhlenbeck)")
     ou_params = calibrate_ou_params()
     print(f"  Parameter kalibrasi dari: {ou_params['calibrated_from']}")
-    
     print(f"  (long-term mean): {ou_params['theta']}%")
-    
     print(f"  (mean-reversion speed): {ou_params['kappa']}")
-    
     print(f"  (volatilitas): {ou_params['sigma']}%") 
-
-    '''
-    Knowledge terkait ini:
-    theta (Long-term mean): rata-rata inflasi jangka panjang (misal target BI di kisaran 3-4%). 
-    Inflasi bisa naik ke 10% atau turun ke 1%, tapi model ini mengasumsikan ia akan selalu "tertarik" kembali ke angka ini.
-
-    kappa (mean-reversion speed): seberapa cepat inflasi kembali ke rata-rata. 
-    Nilai tinggi berarti inflasi sangat stabil dan cepat kembali ke target jika ada guncangan. 
-    Nilai rendah berarti inflasi bisa "ngelantur" lebih lama sebelum kembali ke target.
-
-    sigma (volatilitas): tingkat kegilaan inflasi. Seberapa lebar rentang fluktuasi di sekitar theta. 
-    Nilai tinggi berarti ekonomi sedang tidak menentu (misal: ada krisis, perubahan kebijakan besar). 
-    Nilai rendah berarti inflasi sangat predictable.
-    '''
 
     inf_summary = get_inflation_summary(n_years=30)
     print(f"\n  Proyeksi 30 tahun ke depan:")
@@ -88,22 +69,26 @@ def main():
     print(f"    P50 (median)          : {inf_summary['projected_p50_pct']}% per tahun")
     print(f"    P90 (skenario berat)  : {inf_summary['projected_p90_pct']}% per tahun")
 
+    #! 4. Tampilkan daftar instrumen investasi
     print_section("3. Instrumen Investasi yang Tersedia")
     df = get_instrument_comparison_table()
     print(df[["Instrumen", "Return Nominal (mean)", "Volatilitas", "Risk Level"]].to_string(index=False))
 
+    #! 5. Tampilkan data return IHSG historis
     print_section("4. Data Historis IDX Composite (via yfinance)")
     idx_df = fetch_idx_historical_returns(period="10y")
     print(idx_df.tail(10).to_string(index=False))
     print(f"\n  Rata-rata return IDX 10Y : {idx_df['annual_return_pct'].mean():.2f}%")
     print(f"  Std Dev (volatilitas)    : {idx_df['annual_return_pct'].std():.2f}%")
 
+    #! 6. Eksekusi Simulasi Monte Carlo Pensiun
     print_section("5. Menjalankan Monte Carlo Simulation (10.000 iterasi)...")
     print("  [Ini mungkin membutuhkan 30-60 detik...]\n")
 
     calculator = RetirementCalculator(n_simulations=10_000)
     result     = calculator.calculate(profile)
 
+    #! 7. Tampilkan hasil simulasi per skenario persentil
     print_section("6. Hasil Proyeksi")
     for key, scenario in result.projection.items():
         print(f"\n  [{scenario['percentile']}]")
@@ -114,6 +99,7 @@ def main():
         if scenario['fund_depleted_age']:
             print(f"    Dana habis di usia     : {scenario['fund_depleted_age']} tahun")
 
+    #! 8. Tampilkan rekomendasi umum kalkulator
     print_section("7. Rekomendasi")
     rec = result.recommendations
     print(f"  On track           : {'[OK] YA' if rec['is_on_track'] else '[X] TIDAK'}")
@@ -122,6 +108,7 @@ def main():
     print(f"  Fund gap           : Rp {rec['fund_gap_positive_means_surplus']:>15,.0f} "
           f"({'SURPLUS' if rec['fund_gap_positive_means_surplus'] >= 0 else 'DEFICIT'})")
 
+    #! 9. Tampilkan hasil uji A/B testing
     print_section("8. A/B Test: Fixed vs Glide Path")
     ab = result.ab_test_result
     print(f"  Strategy A (Fixed)      : {ab['strategy_a_fixed']['ruin_probability']*100:.1f}% ruin prob")
@@ -130,6 +117,7 @@ def main():
     print(f"  p-value                 : {ab['p_value']}")
     print(f"  Signifikan              : {'[OK] YA (p<0.05)' if ab['statistically_significant'] else '[X] TIDAK'}")
 
+    #! 10. Jalankan & Tampilkan uji Stress Testing krisis makro ekonomi
     print_section("9. Stress Testing — Skenario Krisis")
     print("  Menjalankan 4 skenario terburuk dalam sejarah ekonomi Indonesia...\n")
 
@@ -225,6 +213,7 @@ def main():
     print(f"\n  Catatan: Jika kamu masih bisa bertahan di skenario ini,")
     print(f"  rencana pensiunmu tergolong SANGAT KUAT (stress-resistant).")
 
+    #! 11. Tampilkan Actionable Insights final
     print_section("10. Actionable Insights")
     for i, insight in enumerate(result.actionable_insights, 1):
         print(f"  {i}. {insight}")
