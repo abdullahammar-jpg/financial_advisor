@@ -1,7 +1,11 @@
 # CuanSelor (Financial Advisor) — Simulasi Monte Carlo Dana Pensiun Indonesia
-
-Proyek ini adalah sistem perencanaan keuangan pensiun berbasis **Simulasi Monte Carlo (10.000 iterasi)** yang dirancang khusus untuk kondisi ekonomi dan demografi Indonesia. Sistem ini mengintegrasikan pemodelan stokastik tingkat inflasi, analisis aktuaria harapan hidup, kalibrasi return historis pasar saham (IHSG) dan obligasi pemerintah, serta pengujian stres terhadap krisis makroekonomi historis.
 ---
+Proyek ini adalah sistem perencanaan keuangan pensiun berbasis **Simulasi Monte Carlo (10.000 iterasi)** yang dirancang khusus untuk kondisi ekonomi dan demografi Indonesia. Sistem ini mengintegrasikan pemodelan stokastik tingkat inflasi, analisis aktuaria harapan hidup, kalibrasi return historis pasar saham (IHSG) dan obligasi pemerintah, serta pengujian stres terhadap krisis makroekonomi historis.
+
+Try it out:
+```bash
+https://financialadvisor-capstone.streamlit.app/
+```
 
 ## Fitur Utama
 
